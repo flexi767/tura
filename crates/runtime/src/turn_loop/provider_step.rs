@@ -192,6 +192,7 @@ mod tests {
                     latency_ms: 100,
                     time_to_first_token_ms: 25,
                     token_per_second: 50.0,
+                    rate_limits: None,
                 }),
             )
             .expect("finish");

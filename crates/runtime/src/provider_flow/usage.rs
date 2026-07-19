@@ -50,6 +50,7 @@ pub(crate) fn usage_report_from_metrics(
             latency_ms,
             time_to_first_token_ms,
             token_per_second: tokens_per_second(output_tokens, latency_ms),
+            rate_limits: m.rate_limits,
         })
     })
 }

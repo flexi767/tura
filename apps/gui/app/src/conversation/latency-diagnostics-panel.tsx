@@ -2,9 +2,16 @@ import type { Message, Session } from "@tura/gateway-sdk";
 import Activity from "lucide-solid/icons/activity";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { formatDuration } from "./message-tools";
-import { contextUsageDiagnostics, turnLatencyDiagnostics } from "./latency-diagnostics";
+import {
+  contextUsageDiagnostics,
+  providerQuotaDiagnostics,
+  turnLatencyDiagnostics,
+} from "./latency-diagnostics";
 
-const tokenCount = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+const tokenCount = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
 
 export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: Session }) {
   const [open, setOpen] = createSignal(false);
@@ -27,6 +34,7 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
     turnLatencyDiagnostics(props.messages, props.session, uiRenderMs()),
   );
   const context = createMemo(() => contextUsageDiagnostics(props.session));
+  const quota = createMemo(() => providerQuotaDiagnostics(props.session));
   const rows = createMemo(
     () =>
       [
@@ -95,7 +103,42 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
                     <strong>{tokenCount.format(usage().latestTurnTokens!)} tokens</strong>
                   </div>
                 </Show>
-                <p>Context resets after automatic compaction; it is token-based, not time-based.</p>
+              </section>
+            )}
+          </Show>
+          <Show when={quota()}>
+            {(usage) => (
+              <section class="provider-quota" aria-label="Provider usage limits">
+                <div class="latency-title">
+                  Account usage
+                  <Show when={usage().plan}>
+                    {" "}
+                    <span>{usage().plan}</span>
+                  </Show>
+                </div>
+                <For each={usage().windows}>
+                  {(window) => (
+                    <div class="quota-window">
+                      <div class="quota-heading">
+                        <strong>{window.label}</strong>
+                        <span>{window.usedPercent.toFixed(0)}% used</span>
+                      </div>
+                      <div class="context-meter quota-meter" aria-hidden="true">
+                        <span style={{ width: `${Math.min(100, window.usedPercent)}%` }} />
+                      </div>
+                      <div class="quota-reset">
+                        <strong>{window.leftPercent.toFixed(0)}% left</strong>
+                        <Show when={window.resetsAt}>
+                          {(reset) => (
+                            <span>
+                              resets {formatResetDistance(reset())} · {formatResetTime(reset())}
+                            </span>
+                          )}
+                        </Show>
+                      </div>
+                    </div>
+                  )}
+                </For>
               </section>
             )}
           </Show>
@@ -103,4 +146,23 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
       </Show>
     </div>
   );
+}
+
+function formatResetDistance(resetsAt: number) {
+  let minutes = Math.max(0, Math.ceil((resetsAt - Date.now()) / 60_000));
+  const days = Math.floor(minutes / 1_440);
+  minutes -= days * 1_440;
+  const hours = Math.floor(minutes / 60);
+  minutes -= hours * 60;
+  if (days) return `in ${days}d ${hours}h`;
+  if (hours) return `in ${hours}h ${minutes}m`;
+  return `in ${minutes}m`;
+}
+
+function formatResetTime(resetsAt: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(resetsAt));
 }

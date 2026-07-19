@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   contextUsageDiagnostics,
+  providerQuotaDiagnostics,
   turnLatencyDiagnostics,
 } from "../../../app/src/conversation/latency-diagnostics";
 
@@ -44,6 +45,41 @@ describe("turn latency diagnostics", () => {
     ]);
     expect(diagnostics.routingMs).toBeUndefined();
     expect(diagnostics.providerQueueMs).toBeUndefined();
+  });
+});
+
+describe("provider quota diagnostics", () => {
+  test("reports Codex session and weekly usage with reset timestamps", () => {
+    expect(
+      providerQuotaDiagnostics({
+        id: "s",
+        status: "idle",
+        usage: {
+          context_tokens: { input: 0, limit: 1 },
+          tokens: {
+            rate_limits: {
+              plan_type: "pro",
+              primary: {
+                used_percent: 43,
+                window_minutes: 300,
+                resets_at: 2_000_000_000,
+              },
+              secondary: {
+                used_percent: 22,
+                window_minutes: 10_080,
+                resets_at: 2_000_500_000,
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      plan: "pro",
+      windows: [
+        { label: "Session (5h)", usedPercent: 43, leftPercent: 57, resetsAt: 2_000_000_000_000 },
+        { label: "Weekly (1w)", usedPercent: 22, leftPercent: 78, resetsAt: 2_000_500_000_000 },
+      ],
+    });
   });
 });
 

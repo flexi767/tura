@@ -727,6 +727,7 @@ mod tests {
             latency_ms: 2_950,
             time_to_first_token_ms: 2_950,
             token_per_second: 0.33,
+            rate_limits: None,
         });
 
         sync_context_tokens_from_provider_usage(&mut session, &mut runtime, 200_000);

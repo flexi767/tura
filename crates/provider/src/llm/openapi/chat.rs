@@ -512,6 +512,7 @@ async fn stream_call(
             finish_reason: stream_state.finish_reason.clone(),
             provider_request_id: None,
             raw_usage: None,
+            rate_limits: None,
         }
     };
     record_context_utilization(&mut metrics);

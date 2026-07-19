@@ -20,6 +20,18 @@ export type ContextUsageDiagnostics = {
   latestTurnTokens?: number;
 };
 
+export type ProviderQuotaWindow = {
+  label: string;
+  usedPercent: number;
+  leftPercent: number;
+  resetsAt?: number;
+};
+
+export type ProviderQuotaDiagnostics = {
+  plan?: string;
+  windows: ProviderQuotaWindow[];
+};
+
 export function contextUsageDiagnostics(session?: Session): ContextUsageDiagnostics | undefined {
   const context = session?.usage?.context_tokens ?? session?.context_tokens;
   if (!context || context.limit <= 0) return undefined;
@@ -32,6 +44,40 @@ export function contextUsageDiagnostics(session?: Session): ContextUsageDiagnost
     percent: Math.min(100, (used / limit) * 100),
     latestTurnTokens: findNumber([session?.usage?.tokens], new Set(["total_tokens"]), 0),
   };
+}
+
+export function providerQuotaDiagnostics(session?: Session): ProviderQuotaDiagnostics | undefined {
+  const tokens = asRecord(session?.usage?.tokens);
+  const limits = asRecord(tokens.rate_limits);
+  const windows = [
+    quotaWindow("Session", limits.primary),
+    quotaWindow("Weekly", limits.secondary),
+  ].filter((window): window is ProviderQuotaWindow => window !== undefined);
+  if (windows.length === 0) return undefined;
+  const plan = typeof limits.plan_type === "string" ? limits.plan_type : undefined;
+  return { plan, windows };
+}
+
+function quotaWindow(name: string, value: unknown): ProviderQuotaWindow | undefined {
+  const window = asRecord(value);
+  const usedPercent = typeof window.used_percent === "number" ? window.used_percent : undefined;
+  if (usedPercent === undefined || !Number.isFinite(usedPercent)) return undefined;
+  const minutes = typeof window.window_minutes === "number" ? window.window_minutes : undefined;
+  const resetsAt = typeof window.resets_at === "number" ? window.resets_at * 1000 : undefined;
+  const label = minutes ? `${name} (${formatWindow(minutes)})` : name;
+  return {
+    label,
+    usedPercent: Math.max(0, usedPercent),
+    leftPercent: Math.max(0, 100 - usedPercent),
+    resetsAt,
+  };
+}
+
+function formatWindow(minutes: number) {
+  if (minutes % 10_080 === 0) return `${minutes / 10_080}w`;
+  if (minutes % 1_440 === 0) return `${minutes / 1_440}d`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
 }
 
 export function turnLatencyDiagnostics(

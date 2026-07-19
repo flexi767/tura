@@ -1397,6 +1397,7 @@ mod tests {
             latency_ms: 0,
             time_to_first_token_ms: 0,
             token_per_second: 0.0,
+            rate_limits: None,
         });
         runtime
     }

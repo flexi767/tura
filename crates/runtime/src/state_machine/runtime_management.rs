@@ -102,6 +102,8 @@ pub struct UsageReport {
     pub latency_ms: u64,
     pub time_to_first_token_ms: u64,
     pub token_per_second: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limits: Option<serde_json::Value>,
 }
 
 /// Final result of a runtime call.
@@ -598,6 +600,7 @@ mod tests {
             latency_ms: 20,
             time_to_first_token_ms: 5,
             token_per_second: 250.0,
+            rate_limits: None,
         };
 
         runtime
@@ -637,6 +640,7 @@ mod tests {
             latency_ms: 1000,
             time_to_first_token_ms: 0,
             token_per_second: 1.0,
+            rate_limits: None,
         };
         let error = RuntimeError {
             error_code: Some("CALL_TIMED_OUT".to_string()),

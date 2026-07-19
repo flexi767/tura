@@ -53,6 +53,7 @@ pub(crate) fn extract_openapi_metrics(data: &Value, context_window: Option<u64>)
             .map(str::to_string),
         provider_request_id: None,
         raw_usage: if usage.is_null() { None } else { Some(usage) },
+        rate_limits: None,
     };
     record_context_utilization(&mut metrics);
     metrics
@@ -98,6 +99,7 @@ pub(crate) fn extract_google_metrics(
             .map(str::to_string),
         provider_request_id,
         raw_usage: data.get("usageMetadata").cloned(),
+        rate_limits: None,
     };
     record_context_utilization(&mut metrics);
     metrics

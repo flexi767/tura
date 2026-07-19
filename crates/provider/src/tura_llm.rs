@@ -146,6 +146,8 @@ pub struct CallMetrics {
     pub finish_reason: Option<String>,
     pub provider_request_id: Option<String>,
     pub raw_usage: Option<Value>,
+    /// Provider account quota windows, when returned with the response.
+    pub rate_limits: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -158,6 +158,7 @@ mod tests {
             latency_ms: 123,
             time_to_first_token_ms: 45,
             token_per_second: 9.5,
+            rate_limits: None,
         });
 
         let finished = runtime_state_checkpoint_payload(&runtime, "turn_finished");

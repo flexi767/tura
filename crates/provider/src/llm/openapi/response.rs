@@ -6,8 +6,10 @@
 //! per-provider divergences are captured by [`ResponsesProfile`] as a small
 //! provider quirk layer.
 
+use reqwest::header::HeaderMap;
 use serde_json::{json, Value};
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::common::{
     insert_opt, message_content_text, normalized_reasoning_effort, normalized_service_tier,
@@ -61,6 +63,7 @@ pub(crate) async fn codex_oauth_call(
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
+    let rate_limits = codex_rate_limits(resp.headers());
     if !status.is_success() {
         let body = resp.text().await.map_err(|err| TuraError::Network {
             message: err.to_string(),
@@ -80,11 +83,81 @@ pub(crate) async fn codex_oauth_call(
     let mut metrics = extract_openapi_metrics(&data, options.context_window);
     metrics.cost = CostDetails::default();
     metrics.provider_request_id = req_id;
+    metrics.rate_limits = rate_limits;
     Ok(ProviderResponse {
         content,
         raw: data,
         metrics: Some(metrics),
     })
+}
+
+fn codex_rate_limits(headers: &HeaderMap) -> Option<Value> {
+    fn text(headers: &HeaderMap, name: &str) -> Option<String> {
+        headers.get(name)?.to_str().ok().map(str::to_string)
+    }
+    fn number(headers: &HeaderMap, name: &str) -> Option<f64> {
+        text(headers, name)?.parse().ok()
+    }
+    fn window(headers: &HeaderMap, prefix: &str, captured_at: u64) -> Option<Value> {
+        let used_percent = number(headers, &format!("x-codex-{prefix}-used-percent"))?;
+        let window_minutes = number(headers, &format!("x-codex-{prefix}-window-minutes"));
+        let reset_after_seconds = number(headers, &format!("x-codex-{prefix}-reset-after-seconds"));
+        let resets_at = reset_after_seconds.map(|seconds| captured_at + seconds.max(0.0) as u64);
+        Some(json!({
+            "used_percent": used_percent,
+            "window_minutes": window_minutes,
+            "reset_after_seconds": reset_after_seconds,
+            "resets_at": resets_at,
+        }))
+    }
+
+    let captured_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())?;
+    let primary = window(headers, "primary", captured_at);
+    let secondary = window(headers, "secondary", captured_at);
+    if primary.is_none() && secondary.is_none() {
+        return None;
+    }
+    Some(json!({
+        "plan_type": text(headers, "x-codex-plan-type"),
+        "active_limit": text(headers, "x-codex-active-limit"),
+        "captured_at": captured_at,
+        "primary": primary,
+        "secondary": secondary,
+    }))
+}
+
+#[cfg(test)]
+mod rate_limit_tests {
+    use super::codex_rate_limits;
+    use reqwest::header::{HeaderMap, HeaderValue};
+
+    #[test]
+    fn parses_codex_primary_and_secondary_quota_windows() {
+        let mut headers = HeaderMap::new();
+        for (name, value) in [
+            ("x-codex-plan-type", "pro"),
+            ("x-codex-primary-used-percent", "43"),
+            ("x-codex-primary-window-minutes", "300"),
+            ("x-codex-primary-reset-after-seconds", "3600"),
+            ("x-codex-secondary-used-percent", "22"),
+            ("x-codex-secondary-window-minutes", "10080"),
+            ("x-codex-secondary-reset-after-seconds", "475200"),
+        ] {
+            headers.insert(
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()).expect("header name"),
+                HeaderValue::from_str(value).expect("header value"),
+            );
+        }
+        let limits = codex_rate_limits(&headers).expect("rate limits");
+        assert_eq!(limits["plan_type"], "pro");
+        assert_eq!(limits["primary"]["used_percent"], 43.0);
+        assert_eq!(limits["primary"]["window_minutes"], 300.0);
+        assert_eq!(limits["secondary"]["used_percent"], 22.0);
+        assert!(limits["secondary"]["resets_at"].as_u64().is_some());
+    }
 }
 
 /// Drive a standard (API-key) OpenAI-style **Responses API** endpoint

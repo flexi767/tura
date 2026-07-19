@@ -22,13 +22,15 @@
   z-index: 40;
   top: calc(100% + 8px);
   right: 0;
-  width: 260px;
+  width: min(360px, calc(100vw - 32px));
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--shadow-control), 0 14px 36px rgb(0 0 0 / 18%);
+  box-shadow:
+    var(--shadow-control),
+    0 14px 36px rgb(0 0 0 / 18%);
 }
 .latency-title {
   margin-bottom: 8px;
@@ -60,6 +62,40 @@
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+.provider-quota {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.provider-quota .latency-title {
+  display: flex;
+  justify-content: space-between;
+}
+.provider-quota .latency-title span {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.quota-window + .quota-window {
+  margin-top: 12px;
+}
+.quota-heading,
+.quota-reset {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.quota-heading strong,
+.quota-reset strong {
+  color: var(--ink);
+}
+.quota-meter {
+  margin-top: 7px;
+}
+.quota-reset {
+  font-size: 11px;
 }
 .context-meter {
   height: 6px;
