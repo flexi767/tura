@@ -313,6 +313,10 @@ export class GatewayClient {
     return this.get("/provider");
   }
 
+  codexUsage(): Promise<Record<string, unknown>> {
+    return this.get("/provider/codex/usage");
+  }
+
   providerAuthMethods(): Promise<Record<string, ProviderAuthMethod[]>> {
     return this.get("/provider/auth");
   }

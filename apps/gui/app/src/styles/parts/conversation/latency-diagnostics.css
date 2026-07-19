@@ -97,6 +97,12 @@
 .quota-reset {
   font-size: 11px;
 }
+.quota-status {
+  padding-top: 8px;
+}
+.quota-error {
+  color: var(--danger);
+}
 .context-meter {
   height: 6px;
   margin: 2px 0 8px;

@@ -134,6 +134,7 @@ pub fn build_router() -> Router {
         .route("/file/open-location", post(api::file::open_file_location))
         // Provider
         .route("/provider", get(api::provider::list_providers))
+        .route("/provider/codex/usage", get(api::provider::codex_usage))
         .route(
             "/provider/model/validate",
             post(api::provider::validate_model),

@@ -2,6 +2,7 @@ import type { Message, Session } from "@tura/gateway-sdk";
 import Activity from "lucide-solid/icons/activity";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { formatDuration } from "./message-tools";
+import { useGlobalGateway } from "../context/gateway";
 import {
   contextUsageDiagnostics,
   providerQuotaDiagnostics,
@@ -14,7 +15,11 @@ const tokenCount = new Intl.NumberFormat(undefined, {
 });
 
 export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: Session }) {
+  const gateway = useGlobalGateway();
   const [open, setOpen] = createSignal(false);
+  const [quota, setQuota] = createSignal<ReturnType<typeof providerQuotaDiagnostics>>();
+  const [quotaLoading, setQuotaLoading] = createSignal(false);
+  const [quotaError, setQuotaError] = createSignal<string>();
   const [uiRenderMs, setUiRenderMs] = createSignal<number>();
   let frame: number | undefined;
   createEffect(() => {
@@ -34,7 +39,23 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
     turnLatencyDiagnostics(props.messages, props.session, uiRenderMs()),
   );
   const context = createMemo(() => contextUsageDiagnostics(props.session));
-  const quota = createMemo(() => providerQuotaDiagnostics(props.session));
+  async function togglePanel() {
+    if (open()) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    setQuotaLoading(true);
+    setQuotaError(undefined);
+    try {
+      setQuota(providerQuotaDiagnostics(await gateway.rootClient().codexUsage()));
+    } catch (error) {
+      setQuota(undefined);
+      setQuotaError(error instanceof Error ? error.message : "Usage unavailable");
+    } finally {
+      setQuotaLoading(false);
+    }
+  }
   const rows = createMemo(
     () =>
       [
@@ -49,12 +70,7 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
   );
   return (
     <div class="latency-diagnostics">
-      <button
-        type="button"
-        class="latency-trigger"
-        onClick={() => setOpen(!open())}
-        aria-expanded={open()}
-      >
+      <button type="button" class="latency-trigger" onClick={togglePanel} aria-expanded={open()}>
         <Activity size={15} />
         <span>Timing</span>
         <Show when={diagnostics().totalMs !== undefined}>
@@ -141,6 +157,12 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
                 </For>
               </section>
             )}
+          </Show>
+          <Show when={quotaLoading()}>
+            <p class="quota-status">Loading account usage…</p>
+          </Show>
+          <Show when={!quotaLoading() && quotaError()}>
+            {(error) => <p class="quota-status quota-error">{error()}</p>}
           </Show>
         </div>
       </Show>

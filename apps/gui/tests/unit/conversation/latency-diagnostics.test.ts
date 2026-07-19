@@ -52,24 +52,12 @@ describe("provider quota diagnostics", () => {
   test("reports only the Codex session window and ignores secondary usage", () => {
     expect(
       providerQuotaDiagnostics({
-        id: "s",
-        status: "idle",
-        usage: {
-          context_tokens: { input: 0, limit: 1 },
-          tokens: {
-            rate_limits: {
-              plan_type: "pro",
-              primary: {
-                used_percent: 43,
-                window_minutes: 300,
-                resets_at: 2_000_000_000,
-              },
-              secondary: {
-                used_percent: 22,
-                window_minutes: 10_080,
-                resets_at: 2_000_500_000,
-              },
-            },
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 43,
+            limit_window_seconds: 18_000,
+            reset_at: 2_000_000_000,
           },
         },
       }),

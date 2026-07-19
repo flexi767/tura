@@ -46,23 +46,33 @@ export function contextUsageDiagnostics(session?: Session): ContextUsageDiagnost
   };
 }
 
-export function providerQuotaDiagnostics(session?: Session): ProviderQuotaDiagnostics | undefined {
-  const tokens = asRecord(session?.usage?.tokens);
-  const limits = asRecord(tokens.rate_limits);
-  const windows = [quotaWindow("Session", limits.primary)].filter(
-    (window): window is ProviderQuotaWindow => window !== undefined,
-  );
+export function providerQuotaDiagnostics(value: unknown): ProviderQuotaDiagnostics | undefined {
+  const root = asRecord(value);
+  const rateLimit = asRecord(root.rate_limit ?? root.rateLimit ?? root.rate_limits);
+  const limits = Object.keys(rateLimit).length > 0 ? rateLimit : root;
+  const windows = [
+    quotaWindow("Session", limits.primary_window ?? limits.primaryWindow ?? limits.primary),
+  ].filter((window): window is ProviderQuotaWindow => window !== undefined);
   if (windows.length === 0) return undefined;
-  const plan = typeof limits.plan_type === "string" ? limits.plan_type : undefined;
+  const planValue = root.plan_type ?? root.planType ?? limits.plan_type ?? limits.planType;
+  const plan = typeof planValue === "string" ? planValue : undefined;
   return { plan, windows };
 }
 
 function quotaWindow(name: string, value: unknown): ProviderQuotaWindow | undefined {
   const window = asRecord(value);
-  const usedPercent = typeof window.used_percent === "number" ? window.used_percent : undefined;
+  const usedValue = window.used_percent ?? window.usedPercent;
+  const usedPercent = typeof usedValue === "number" ? usedValue : undefined;
   if (usedPercent === undefined || !Number.isFinite(usedPercent)) return undefined;
-  const minutes = typeof window.window_minutes === "number" ? window.window_minutes : undefined;
-  const resetsAt = typeof window.resets_at === "number" ? window.resets_at * 1000 : undefined;
+  const minutesValue =
+    window.window_minutes ??
+    window.windowDurationMins ??
+    (typeof window.limit_window_seconds === "number"
+      ? window.limit_window_seconds / 60
+      : undefined);
+  const minutes = typeof minutesValue === "number" ? minutesValue : undefined;
+  const resetValue = window.resets_at ?? window.resetsAt ?? window.reset_at;
+  const resetsAt = typeof resetValue === "number" ? resetValue * 1000 : undefined;
   const label = minutes ? `${name} (${formatWindow(minutes)})` : name;
   return {
     label,

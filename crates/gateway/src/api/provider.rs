@@ -2,7 +2,10 @@
 
 use crate::contracts::*;
 use crate::mock::global_store;
-use axum::extract::{Json, Path, Query};
+use axum::{
+    extract::{Json, Path, Query},
+    http::StatusCode,
+};
 use chrono::Utc;
 use fs2::FileExt;
 use std::collections::HashMap;
@@ -39,6 +42,48 @@ use metadata::{
 use oauth_support::{browser_login_url, github_copilot_oauth_client_id, google_oauth_client_id};
 
 static PROVIDER_AUTH_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+pub async fn codex_usage() -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let _ = refresh_provider_auth_if_needed("codex", false).await;
+    let token = config_value("OPENAI_API_KEY").ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "Codex OAuth access is not configured".to_string(),
+        )
+    })?;
+    let endpoint = std::env::var("OPENAI_CODEX_USAGE_ENDPOINT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex/usage".to_string());
+    let client = reqwest::Client::new();
+    let mut request = client.get(endpoint).bearer_auth(token);
+    if let Some(account_id) = config_value("OPENAI_ACCOUNT_ID") {
+        request = request.header("ChatGPT-Account-Id", account_id);
+    }
+    let response = request.send().await.map_err(|error| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to request Codex usage: {error}"),
+        )
+    })?;
+    let status = response.status();
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Codex usage returned invalid JSON: {error}"),
+            )
+        })?;
+    if !status.is_success() {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Codex usage returned HTTP {status}"),
+        ));
+    }
+    Ok(Json(value))
+}
 
 // ============================================================================
 // Provider List
