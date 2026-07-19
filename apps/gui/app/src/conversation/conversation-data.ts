@@ -28,9 +28,10 @@ export function avatarConfigForAgent(
   }
   const selected =
     agents.find((agent) => agent.name === selectedAgentId) ?? agents.find((agent) => !agent.hidden);
-  return normalizeAvatarSettings(
-    selected?.options?.avatar as Partial<AgentAvatarConfig> | undefined,
-  );
+  return normalizeAvatarSettings({
+    ...(selected?.options?.avatar as Partial<AgentAvatarConfig> | undefined),
+    display_mode: undefined,
+  });
 }
 
 export function personaMediaForAvatar(
