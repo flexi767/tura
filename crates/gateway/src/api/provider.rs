@@ -45,19 +45,24 @@ static PROVIDER_AUTH_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub async fn codex_usage() -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let _ = refresh_provider_auth_if_needed("codex", false).await;
-    let token = config_value("OPENAI_API_KEY").ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            "Codex OAuth access is not configured".to_string(),
-        )
-    })?;
+    let cli_auth = codex_cli_auth();
+    let token = config_value("OPENAI_API_KEY")
+        .or_else(|| cli_auth.as_ref().and_then(|auth| auth.0.clone()))
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Codex authentication is not configured".to_string(),
+            )
+        })?;
     let endpoint = std::env::var("OPENAI_CODEX_USAGE_ENDPOINT")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex/usage".to_string());
     let client = reqwest::Client::new();
     let mut request = client.get(endpoint).bearer_auth(token);
-    if let Some(account_id) = config_value("OPENAI_ACCOUNT_ID") {
+    if let Some(account_id) =
+        config_value("OPENAI_ACCOUNT_ID").or_else(|| cli_auth.and_then(|auth| auth.1))
+    {
         request = request.header("ChatGPT-Account-Id", account_id);
     }
     let response = request.send().await.map_err(|error| {
@@ -83,6 +88,30 @@ pub async fn codex_usage() -> Result<Json<serde_json::Value>, (StatusCode, Strin
         ));
     }
     Ok(Json(value))
+}
+
+fn codex_cli_auth() -> Option<(Option<String>, Option<String>)> {
+    let home = std::env::var_os("CODEX_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".codex"))
+        })
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|home| std::path::PathBuf::from(home).join(".codex"))
+        })?;
+    let value =
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(home.join("auth.json")).ok()?)
+            .ok()?;
+    let tokens = value.get("tokens")?;
+    let read = |key: &str| {
+        tokens
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(ToString::to_string)
+    };
+    Some((read("access_token"), read("account_id")))
 }
 
 // ============================================================================
