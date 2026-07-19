@@ -103,6 +103,7 @@ pub fn process_manas_internal(
     let mut turn = 0_u64;
     let mut provider_timeout_retries = 0_u8;
     let mut no_tool_retries = 0_u64;
+    let mut last_successful_tool_signature: Option<String> = None;
     let mut final_session_state = SessionState::Completed;
     let mut final_error: Option<String> = None;
     let supports_task_status = agent_commands
@@ -304,10 +305,24 @@ pub fn process_manas_internal(
                     );
                 }
             }
+            let tool_signature = tool_call_signature(&tool_calls);
+            if last_successful_tool_signature.as_deref() == Some(tool_signature.as_str()) {
+                warn!(
+                    session_id = %session.session_id,
+                    turn = turn,
+                    runtime_id = %runtime.runtime_id,
+                    "provider repeated an identical successful tool batch; ending turn without executing it again"
+                );
+                break;
+            }
             provider_timeout_retries = 0;
             no_tool_retries = 0;
             let mut tool_results =
                 execute_tool_calls(&tool_calls, agents.first(), session, &runtime, redis_url)?;
+            last_successful_tool_signature = tool_results
+                .iter()
+                .all(|result| result.success)
+                .then_some(tool_signature);
             let pending_compact_contexts =
                 extract_compact_context_results(&mut tool_results, Some(&runtime));
             let terminal_task_status = tool_results
@@ -676,6 +691,21 @@ pub fn process_manas_internal(
     })
 }
 
+fn tool_call_signature(tool_calls: &[crate::runtime::types::ToolCallData]) -> String {
+    serde_json::to_string(
+        &tool_calls
+            .iter()
+            .map(|call| {
+                serde_json::json!({
+                    "tool": call.tool_name,
+                    "arguments": call.arguments,
+                })
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_default()
+}
+
 fn commit_terminal_session_checkpoint(session: &SessionManagement, git_event: &str) -> bool {
     if crate::router_command_run::command_run_sandbox_enabled() {
         info!(
@@ -948,7 +978,7 @@ mod tests {
         should_auto_complete_non_planning_doing_after_tool_turn,
         should_continue_no_tool_task_status_retry, should_end_turn_without_task_status_backfill,
         should_retry_no_tool_task_status, terminal_status_needs_final_response_turn,
-        DEFAULT_MANAS_MAX_TURNS,
+        tool_call_signature, DEFAULT_MANAS_MAX_TURNS,
     };
     use crate::state_machine::agent_management::{ProviderConfig, ToolChoice};
     use crate::state_machine::runtime_management::{
@@ -1009,6 +1039,24 @@ mod tests {
         } else {
             std::env::remove_var("TURA_MANAS_MAX_TURNS");
         }
+    }
+
+    #[test]
+    fn tool_call_signature_ignores_provider_metadata_but_tracks_arguments() {
+        let call =
+            |command: &str, metadata: serde_json::Value| crate::runtime::types::ToolCallData {
+                tool_name: "command_run".to_string(),
+                arguments: serde_json::json!({"commands":[{"command_line":command}]}),
+                provider_metadata: Some(metadata),
+            };
+        let first =
+            tool_call_signature(&[call("rg model config.json", serde_json::json!({"id":1}))]);
+        let replay =
+            tool_call_signature(&[call("rg model config.json", serde_json::json!({"id":2}))]);
+        let changed =
+            tool_call_signature(&[call("rg other config.json", serde_json::json!({"id":2}))]);
+        assert_eq!(first, replay);
+        assert_ne!(first, changed);
     }
 
     #[test]
