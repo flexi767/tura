@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { turnLatencyDiagnostics } from "../../../app/src/conversation/latency-diagnostics";
+import {
+  contextUsageDiagnostics,
+  turnLatencyDiagnostics,
+} from "../../../app/src/conversation/latency-diagnostics";
 
 describe("turn latency diagnostics", () => {
   test("combines persisted provider, tool, and session timings", () => {
@@ -41,5 +44,27 @@ describe("turn latency diagnostics", () => {
     ]);
     expect(diagnostics.routingMs).toBeUndefined();
     expect(diagnostics.providerQueueMs).toBeUndefined();
+  });
+});
+
+describe("context usage diagnostics", () => {
+  test("reports current context, remaining capacity, percentage, and latest turn tokens", () => {
+    expect(
+      contextUsageDiagnostics({
+        id: "s",
+        status: "idle",
+        context_tokens: { input: 12_345, limit: 76_800 },
+        usage: {
+          context_tokens: { input: 12_345, limit: 76_800 },
+          tokens: { total_tokens: 1_234 },
+        },
+      }),
+    ).toEqual({
+      used: 12_345,
+      limit: 76_800,
+      remaining: 64_455,
+      percent: (12_345 / 76_800) * 100,
+      latestTurnTokens: 1_234,
+    });
   });
 });

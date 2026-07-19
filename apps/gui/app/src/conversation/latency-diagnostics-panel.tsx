@@ -2,7 +2,9 @@ import type { Message, Session } from "@tura/gateway-sdk";
 import Activity from "lucide-solid/icons/activity";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { formatDuration } from "./message-tools";
-import { turnLatencyDiagnostics } from "./latency-diagnostics";
+import { contextUsageDiagnostics, turnLatencyDiagnostics } from "./latency-diagnostics";
+
+const tokenCount = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 
 export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: Session }) {
   const [open, setOpen] = createSignal(false);
@@ -24,6 +26,7 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
   const diagnostics = createMemo(() =>
     turnLatencyDiagnostics(props.messages, props.session, uiRenderMs()),
   );
+  const context = createMemo(() => contextUsageDiagnostics(props.session));
   const rows = createMemo(
     () =>
       [
@@ -49,6 +52,9 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
         <Show when={diagnostics().totalMs !== undefined}>
           <strong>{formatDuration(diagnostics().totalMs!)}</strong>
         </Show>
+        <Show when={context()}>
+          {(usage) => <span class="latency-context-percent">{usage().percent.toFixed(0)}%</span>}
+        </Show>
       </button>
       <Show when={open()}>
         <div class="latency-popover" role="status">
@@ -62,6 +68,37 @@ export function LatencyDiagnosticsPanel(props: { messages: Message[]; session?: 
             )}
           </For>
           <p>Unavailable stages stay blank instead of being estimated.</p>
+          <Show when={context()}>
+            {(usage) => (
+              <section class="context-usage" aria-label="Context usage">
+                <div class="latency-title">Current context</div>
+                <div class="context-meter" aria-hidden="true">
+                  <span style={{ width: `${usage().percent}%` }} />
+                </div>
+                <div class="latency-row">
+                  <span>Used</span>
+                  <strong>
+                    {tokenCount.format(usage().used)} / {tokenCount.format(usage().limit)} tokens
+                  </strong>
+                </div>
+                <div class="latency-row">
+                  <span>Context used</span>
+                  <strong>{usage().percent.toFixed(1)}%</strong>
+                </div>
+                <div class="latency-row">
+                  <span>Compaction</span>
+                  <strong>in {tokenCount.format(usage().remaining)} tokens</strong>
+                </div>
+                <Show when={usage().latestTurnTokens !== undefined}>
+                  <div class="latency-row">
+                    <span>Latest turn</span>
+                    <strong>{tokenCount.format(usage().latestTurnTokens!)} tokens</strong>
+                  </div>
+                </Show>
+                <p>Context resets after automatic compaction; it is token-based, not time-based.</p>
+              </section>
+            )}
+          </Show>
         </div>
       </Show>
     </div>

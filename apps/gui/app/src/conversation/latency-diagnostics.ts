@@ -12,6 +12,28 @@ export type TurnLatencyDiagnostics = {
   totalMs?: number;
 };
 
+export type ContextUsageDiagnostics = {
+  used: number;
+  limit: number;
+  remaining: number;
+  percent: number;
+  latestTurnTokens?: number;
+};
+
+export function contextUsageDiagnostics(session?: Session): ContextUsageDiagnostics | undefined {
+  const context = session?.usage?.context_tokens ?? session?.context_tokens;
+  if (!context || context.limit <= 0) return undefined;
+  const used = Math.max(0, context.input);
+  const limit = context.limit;
+  return {
+    used,
+    limit,
+    remaining: Math.max(0, limit - used),
+    percent: Math.min(100, (used / limit) * 100),
+    latestTurnTokens: findNumber([session?.usage?.tokens], new Set(["total_tokens"]), 0),
+  };
+}
+
 export function turnLatencyDiagnostics(
   messages: Message[],
   session?: Session,
