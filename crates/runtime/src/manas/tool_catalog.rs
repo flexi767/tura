@@ -220,6 +220,7 @@ fn default_command_run_commands() -> BTreeSet<String> {
         "apply_patch",
         active_shell_command_name(),
         "web_discover",
+        "mcp",
         "task_status",
     ]
     .into_iter()
@@ -432,7 +433,7 @@ pub(crate) fn command_run_command_format_line(
                 current_shell_command_format(&shell_prompt)
             ))
         }
-        "read_media" | "generate_media" | "web_discover" => Some(format!(
+        "read_media" | "generate_media" | "web_discover" | "mcp" => Some(format!(
             "- {command_id}: {} Schema: {}",
             compact_prompt(&command_prompt(&command_id)),
             compact_schema(&command_schema(&command_id)),
@@ -503,6 +504,7 @@ fn command_list_for_description(commands: &BTreeSet<String>, active_shell: &str)
         "generate_media",
         "read_media",
         "web_discover",
+        "mcp",
         "task_status",
         "planning",
     ];
@@ -751,6 +753,7 @@ mod tests {
                 "apply_patch",
                 active_shell_command_name(),
                 "web_discover",
+                "mcp",
                 "task_status",
             ],
         );
@@ -1100,6 +1103,7 @@ mod tests {
                 "apply_patch",
                 "shell_command",
                 "web_discover",
+                "mcp",
                 "task_status",
             ],
         );
@@ -1130,7 +1134,7 @@ mod tests {
         );
         assert_command_type_enum(
             &schema,
-            &["apply_patch", "bash", "web_discover", "task_status"],
+            &["apply_patch", "bash", "web_discover", "mcp", "task_status"],
         );
 
         std::env::remove_var("TURA_COMMAND_RUN_SHELL");
@@ -1149,7 +1153,7 @@ mod tests {
         );
         assert_command_type_enum(
             &schema,
-            &["apply_patch", "zsh", "web_discover", "task_status"],
+            &["apply_patch", "zsh", "web_discover", "mcp", "task_status"],
         );
 
         std::env::remove_var("TURA_COMMAND_RUN_SHELL");
@@ -1174,6 +1178,7 @@ mod tests {
                 "apply_patch",
                 "shell_command",
                 "web_discover",
+                "mcp",
                 "task_status",
                 "planning",
             ],
