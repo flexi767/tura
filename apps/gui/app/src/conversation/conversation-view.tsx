@@ -1000,7 +1000,7 @@ function Transcript(props: {
     });
   });
   const avatarMode = createMemo<AvatarDisplayMode>(
-    () => props.avatarSettings.display_mode ?? "static",
+    () => props.avatarSettings.display_mode ?? "hidden",
   );
   return (
     <section

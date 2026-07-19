@@ -103,7 +103,7 @@ pub fn process_manas_internal(
     let mut turn = 0_u64;
     let mut provider_timeout_retries = 0_u8;
     let mut no_tool_retries = 0_u64;
-    let mut last_successful_tool_signature: Option<String> = None;
+    let mut last_executed_tool_signature: Option<String> = None;
     let mut final_session_state = SessionState::Completed;
     let mut final_error: Option<String> = None;
     let supports_task_status = agent_commands
@@ -306,23 +306,20 @@ pub fn process_manas_internal(
                 }
             }
             let tool_signature = tool_call_signature(&tool_calls);
-            if last_successful_tool_signature.as_deref() == Some(tool_signature.as_str()) {
+            if last_executed_tool_signature.as_deref() == Some(tool_signature.as_str()) {
                 warn!(
                     session_id = %session.session_id,
                     turn = turn,
                     runtime_id = %runtime.runtime_id,
-                    "provider repeated an identical successful tool batch; ending turn without executing it again"
+                    "provider repeated an identical tool batch; ending turn without executing it again"
                 );
                 break;
             }
+            last_executed_tool_signature = Some(tool_signature);
             provider_timeout_retries = 0;
             no_tool_retries = 0;
             let mut tool_results =
                 execute_tool_calls(&tool_calls, agents.first(), session, &runtime, redis_url)?;
-            last_successful_tool_signature = tool_results
-                .iter()
-                .all(|result| result.success)
-                .then_some(tool_signature);
             let pending_compact_contexts =
                 extract_compact_context_results(&mut tool_results, Some(&runtime));
             let terminal_task_status = tool_results

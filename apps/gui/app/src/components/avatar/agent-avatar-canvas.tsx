@@ -1,4 +1,4 @@
-import type { AgentAvatarConfig, PersonaMediaConfig } from "@tura/gateway-sdk";
+import type { PersonaMediaConfig } from "@tura/gateway-sdk";
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { classNames } from "../../state/format";
 import { EMOJI_ALIASES, avatarExpressionIdsForEmoji } from "./agent-avatar-protocol";
@@ -8,22 +8,21 @@ import {
   avatarPixelAfterThreshold,
   type AvatarExpressionInfo,
 } from "./agent-avatar-rendering";
-
-export type AvatarRenderSettings = AgentAvatarConfig;
-export type AvatarDisplayMode = NonNullable<AgentAvatarConfig["display_mode"]>;
-export const AVATAR_WORKSPACE_CONFIG_KEY = "agent_avatar";
-
-export const DEFAULT_AVATAR_SETTINGS: AvatarRenderSettings = {
-  role: "tura",
-  display_mode: "static",
-  pixel_size: 20,
-  threshold: 160,
-};
-
-export const AVATAR_SETTING_LIMITS = {
-  pixelSize: { min: 10, max: 30 },
-  threshold: { min: 100, max: 200 },
-};
+import {
+  DEFAULT_AVATAR_SETTINGS,
+  normalizeAvatarSettings,
+  type AvatarRenderSettings,
+} from "./agent-avatar-settings";
+export {
+  AVATAR_SETTING_LIMITS,
+  AVATAR_WORKSPACE_CONFIG_KEY,
+  DEFAULT_AVATAR_SETTINGS,
+  avatarSettingsFromConfigValue,
+  normalizeAvatarDisplayMode,
+  normalizeAvatarSettings,
+  type AvatarDisplayMode,
+  type AvatarRenderSettings,
+} from "./agent-avatar-settings";
 
 const CANVAS_SIZE = 768;
 const POINTER_DIRECTION_DELAY_MS = 50;
@@ -88,60 +87,6 @@ function fallbackMedia(role: string): PersonaMediaConfig {
         ]),
       ),
     })),
-  };
-}
-
-export function normalizeAvatarSettings(
-  value?: Partial<AvatarRenderSettings> | null,
-): AvatarRenderSettings {
-  return {
-    role: value?.role || DEFAULT_AVATAR_SETTINGS.role,
-    persona_id: value?.persona_id,
-    display_mode: normalizeAvatarDisplayMode(value?.display_mode),
-    pixel_size: clamp(
-      Number(value?.pixel_size ?? DEFAULT_AVATAR_SETTINGS.pixel_size),
-      AVATAR_SETTING_LIMITS.pixelSize.min,
-      AVATAR_SETTING_LIMITS.pixelSize.max,
-    ),
-    threshold: clamp(
-      Number(value?.threshold ?? DEFAULT_AVATAR_SETTINGS.threshold),
-      AVATAR_SETTING_LIMITS.threshold.min,
-      AVATAR_SETTING_LIMITS.threshold.max,
-    ),
-  };
-}
-
-export function normalizeAvatarDisplayMode(value: unknown): AvatarDisplayMode {
-  return value === "hidden" || value === "dynamic" ? value : "static";
-}
-
-export function avatarSettingsFromConfigValue(value: unknown): AvatarRenderSettings {
-  if (!value) {
-    return normalizeAvatarSettings({
-      ...DEFAULT_AVATAR_SETTINGS,
-      persona_id: DEFAULT_AVATAR_SETTINGS.role,
-    });
-  }
-  if (typeof value === "string") {
-    try {
-      return avatarSettingsFromConfigValue(JSON.parse(value));
-    } catch {
-      return normalizeAvatarSettings({
-        ...DEFAULT_AVATAR_SETTINGS,
-        persona_id: DEFAULT_AVATAR_SETTINGS.role,
-      });
-    }
-  }
-  if (typeof value !== "object" || Array.isArray(value)) {
-    return normalizeAvatarSettings({
-      ...DEFAULT_AVATAR_SETTINGS,
-      persona_id: DEFAULT_AVATAR_SETTINGS.role,
-    });
-  }
-  const settings = normalizeAvatarSettings(value as Partial<AvatarRenderSettings>);
-  return {
-    ...settings,
-    persona_id: settings.persona_id ?? settings.role,
   };
 }
 
