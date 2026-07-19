@@ -49,10 +49,9 @@ export function contextUsageDiagnostics(session?: Session): ContextUsageDiagnost
 export function providerQuotaDiagnostics(session?: Session): ProviderQuotaDiagnostics | undefined {
   const tokens = asRecord(session?.usage?.tokens);
   const limits = asRecord(tokens.rate_limits);
-  const windows = [
-    quotaWindow("Session", limits.primary),
-    quotaWindow("Weekly", limits.secondary),
-  ].filter((window): window is ProviderQuotaWindow => window !== undefined);
+  const windows = [quotaWindow("Session", limits.primary)].filter(
+    (window): window is ProviderQuotaWindow => window !== undefined,
+  );
   if (windows.length === 0) return undefined;
   const plan = typeof limits.plan_type === "string" ? limits.plan_type : undefined;
   return { plan, windows };

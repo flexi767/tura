@@ -49,7 +49,7 @@ describe("turn latency diagnostics", () => {
 });
 
 describe("provider quota diagnostics", () => {
-  test("reports Codex session and weekly usage with reset timestamps", () => {
+  test("reports only the Codex session window and ignores secondary usage", () => {
     expect(
       providerQuotaDiagnostics({
         id: "s",
@@ -77,7 +77,6 @@ describe("provider quota diagnostics", () => {
       plan: "pro",
       windows: [
         { label: "Session (5h)", usedPercent: 43, leftPercent: 57, resetsAt: 2_000_000_000_000 },
-        { label: "Weekly (1w)", usedPercent: 22, leftPercent: 78, resetsAt: 2_000_500_000_000 },
       ],
     });
   });
