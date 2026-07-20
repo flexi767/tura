@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::error;
 
 use crate::gateway_events::publish_streamed_agent_text;
@@ -31,6 +31,38 @@ pub(crate) struct RuntimeStreamingInput {
     pub(crate) require_startup_task_state: bool,
 }
 
+const TEXT_DELTA_BATCH_INTERVAL: Duration = Duration::from_millis(32);
+
+fn forward_batched_text_deltas(
+    text_delta_rx: mpsc::Receiver<String>,
+    mut publish: impl FnMut(String),
+) {
+    let Ok(first) = text_delta_rx.recv() else {
+        return;
+    };
+    publish(first);
+
+    while let Ok(first) = text_delta_rx.recv() {
+        let mut batch = first;
+        let deadline = Instant::now() + TEXT_DELTA_BATCH_INTERVAL;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match text_delta_rx.recv_timeout(remaining) {
+                Ok(delta) => batch.push_str(&delta),
+                Err(mpsc::RecvTimeoutError::Timeout) => break,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    publish(batch);
+                    return;
+                }
+            }
+        }
+        publish(batch);
+    }
+}
+
 pub(crate) async fn call_runtime_streaming(
     runtime: &mut RuntimeManagement,
     route_config: &tura_llm_rust::RouteConfig,
@@ -46,17 +78,17 @@ pub(crate) async fn call_runtime_streaming(
     let (text_delta_tx, text_delta_rx) = mpsc::channel::<String>();
     let text_delta_session_id = runtime.session_id.clone();
     let text_delta_runtime = runtime.clone();
-    let _text_delta_thread = std::thread::spawn(move || {
+    let text_delta_thread = std::thread::spawn(move || {
         let Ok(async_runtime) = tokio::runtime::Runtime::new() else {
             return;
         };
-        while let Ok(delta) = text_delta_rx.recv() {
+        forward_batched_text_deltas(text_delta_rx, |delta| {
             async_runtime.block_on(publish_streamed_agent_text(
                 &text_delta_session_id,
                 &text_delta_runtime,
                 &delta,
             ));
-        }
+        });
     });
 
     let first_stream_output_at: Arc<Mutex<Option<DateTime<Utc>>>> = Arc::new(Mutex::new(None));
@@ -141,6 +173,7 @@ pub(crate) async fn call_runtime_streaming(
                 )?;
                 provider_task.abort();
                 let _ = (&mut provider_task).await;
+                let _ = text_delta_thread.join();
                 drop(final_response_stream_tx);
                 let _ = command_task.join();
                 return Ok(());
@@ -155,6 +188,7 @@ pub(crate) async fn call_runtime_streaming(
                             "error": e.to_string()
                         }));
                         finish_provider_call_failure(runtime, finished_at, &e, RuntimeCallResultStatus::Failed)?;
+                        let _ = text_delta_thread.join();
                         drop(final_response_stream_tx);
                         let _ = command_task.join();
                         return Ok(());
@@ -173,6 +207,7 @@ pub(crate) async fn call_runtime_streaming(
                             message,
                             RuntimeCallResultStatus::Failed,
                         )?;
+                        let _ = text_delta_thread.join();
                         drop(final_response_stream_tx);
                         let _ = command_task.join();
                         return Ok(());
@@ -204,6 +239,7 @@ pub(crate) async fn call_runtime_streaming(
                     )?;
                     provider_task.abort();
                     let _ = (&mut provider_task).await;
+                    let _ = text_delta_thread.join();
                     drop(final_response_stream_tx);
                     let _ = command_task.join();
                     return Ok(());
@@ -227,6 +263,7 @@ pub(crate) async fn call_runtime_streaming(
                         .map_err(|e| format!("failed to finish runtime success: {e}"))?;
                     provider_task.abort();
                     let _ = (&mut provider_task).await;
+                    let _ = text_delta_thread.join();
                     drop(final_response_stream_tx);
                     let _ = command_task.join();
                     return Ok(());
@@ -234,6 +271,7 @@ pub(crate) async fn call_runtime_streaming(
             }
         }
     };
+    let _ = text_delta_thread.join();
     let finished_at = Utc::now();
     let tool_dispatch_content =
         response_content_for_tool_dispatch(&response.content, &response.raw);
@@ -331,8 +369,23 @@ fn first_stream_output_or(
 
 #[cfg(test)]
 mod tests {
-    use super::response_content_for_tool_dispatch;
+    use super::{forward_batched_text_deltas, response_content_for_tool_dispatch};
     use serde_json::json;
+    use std::sync::mpsc;
+
+    #[test]
+    fn text_delta_forwarder_publishes_first_delta_immediately_and_flushes_tail() {
+        let (tx, rx) = mpsc::channel();
+        tx.send("first".to_string()).expect("first delta");
+        tx.send(" second".to_string()).expect("second delta");
+        tx.send(" third".to_string()).expect("third delta");
+        drop(tx);
+
+        let mut published = Vec::new();
+        forward_batched_text_deltas(rx, |batch| published.push(batch));
+
+        assert_eq!(published, vec!["first", " second third"]);
+    }
 
     #[test]
     fn tool_dispatch_content_recovers_command_run_from_raw_response_events() {
